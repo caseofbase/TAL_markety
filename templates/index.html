@@ -183,17 +183,17 @@
                                 <div class="card-body">
                                     <div class="row">
                                         <div class="col-md-6">
-                                            <p><strong>Total Employees:</strong> <span id="totalEmployees"></span></p>
-                                            <p><strong>Engineering Count:</strong> <span id="engineeringCount"></span></p>
+                                            <p><strong>Total Employees:</strong> <span id="totalEmployees">N/A</span></p>
+                                            <p><strong>Engineering Count:</strong> <span id="engineeringCount">N/A</span></p>
+                                            <p><strong>Engineering Percentage:</strong> <span id="engineeringPercentage">N/A</span></p>
                                         </div>
                                         <div class="col-md-6">
-                                            <p><strong>Engineering Percentage:</strong> <span id="engineeringPercentage"></span></p>
-                                            <p><strong>Engineering Leaders:</strong> <span id="leaderCount"></span></p>
+                                            <p><strong>Engineering Leaders:</strong> <span id="leaderCount">N/A</span></p>
                                         </div>
                                     </div>
                                     
                                     <div class="progress mb-3">
-                                        <div id="engineeringProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                        <div id="engineeringProgress" class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                                     </div>
                                 </div>
                             </div>
@@ -453,93 +453,121 @@
         
         // Update company information in the modal
         function updateCompanyInfo(data) {
-            const company = data.company;
-            const engineering = data.engineering;
+            const company = data.company || {};
+            const engineering = data.engineering || {};
+            
+            // Helper function to safely update text content
+            function safeUpdateText(id, value, defaultValue = 'N/A') {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.textContent = value || defaultValue;
+                }
+            }
+            
+            // Helper function to safely update href
+            function safeUpdateHref(id, value, defaultValue = '#') {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.href = value || defaultValue;
+                }
+            }
             
             // Update company info
-            document.getElementById('companyName').textContent = company.name || 'N/A';
-            document.getElementById('companyWebsite').textContent = company.website || 'N/A';
-            document.getElementById('companyWebsite').href = company.website || '#';
-            document.getElementById('companyLinkedIn').textContent = company.linkedin_url || 'N/A';
-            document.getElementById('companyLinkedIn').href = company.linkedin_url || '#';
-            document.getElementById('companyIndustry').textContent = company.industry || 'N/A';
-            document.getElementById('companyFounded').textContent = company.founded_year || 'N/A';
-            document.getElementById('companyLocation').textContent = company.location || 'N/A';
+            safeUpdateText('companyName', company.name);
+            safeUpdateText('companyWebsite', company.website);
+            safeUpdateHref('companyWebsite', company.website);
+            safeUpdateText('companyLinkedIn', company.linkedin_url);
+            safeUpdateHref('companyLinkedIn', company.linkedin_url);
+            safeUpdateText('companyIndustry', company.industry);
+            safeUpdateText('companyFounded', company.founded_year);
+            safeUpdateText('companyLocation', company.location);
             
             // Check if we have engineering data or an error message
             if (engineering.error) {
                 // Show error message in engineering stats section
-                document.getElementById('totalEmployees').textContent = 'N/A';
-                document.getElementById('engineeringCount').textContent = 'N/A';
-                document.getElementById('engineeringPercentage').textContent = 'N/A';
-                document.getElementById('leaderCount').textContent = 'N/A';
+                safeUpdateText('totalEmployees', null);
+                safeUpdateText('engineeringCount', null);
+                safeUpdateText('engineeringPercentage', null);
+                safeUpdateText('leaderCount', null);
                 
                 // Update progress bar to show error state
                 const progressBar = document.getElementById('engineeringProgress');
-                progressBar.style.width = '0%';
-                progressBar.setAttribute('aria-valuenow', 0);
-                progressBar.classList.add('bg-warning');
+                if (progressBar) {
+                    progressBar.style.width = '0%';
+                    progressBar.setAttribute('aria-valuenow', 0);
+                    progressBar.classList.add('bg-warning');
+                }
                 
                 // Add error message to engineering stats card
                 const engineeringStatsCard = document.querySelector('.card:nth-child(2) .card-body');
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'alert alert-warning mt-3';
-                errorDiv.textContent = engineering.error;
-                engineeringStatsCard.appendChild(errorDiv);
+                if (engineeringStatsCard) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'alert alert-warning mt-3';
+                    errorDiv.textContent = engineering.error;
+                    engineeringStatsCard.appendChild(errorDiv);
+                }
             } else {
                 // Update engineering stats with actual data
-                document.getElementById('totalEmployees').textContent = engineering.total_employees || 'N/A';
-                document.getElementById('engineeringCount').textContent = engineering.engineering_count || 'N/A';
-                document.getElementById('engineeringPercentage').textContent = 
-                    engineering.engineering_percentage ? `${engineering.engineering_percentage.toFixed(1)}%` : 'N/A';
-                document.getElementById('leaderCount').textContent = engineering.leader_count || '0';
+                safeUpdateText('totalEmployees', engineering.total_employees);
+                safeUpdateText('engineeringCount', engineering.engineering_count);
+                safeUpdateText('engineeringPercentage', 
+                    engineering.engineering_percentage ? `${engineering.engineering_percentage.toFixed(1)}%` : null);
+                safeUpdateText('leaderCount', engineering.leader_count || '0');
                 
                 // Update progress bar
                 const progressBar = document.getElementById('engineeringProgress');
-                progressBar.style.width = `${engineering.engineering_percentage || 0}%`;
-                progressBar.setAttribute('aria-valuenow', engineering.engineering_percentage || 0);
-                progressBar.classList.remove('bg-warning');
+                if (progressBar) {
+                    const percentage = engineering.engineering_percentage || 0;
+                    progressBar.style.width = `${percentage}%`;
+                    progressBar.setAttribute('aria-valuenow', percentage);
+                    progressBar.classList.remove('bg-warning');
+                }
             }
             
             // Update engineering leaders
             const leadersList = document.getElementById('leadersList');
-            leadersList.innerHTML = '';
-            
-            if (engineering.engineering_leaders && engineering.engineering_leaders.length > 0) {
-                engineering.engineering_leaders.forEach(leader => {
-                    const leaderCard = document.createElement('div');
-                    leaderCard.className = 'card mb-2';
-                    leaderCard.innerHTML = `
-                        <div class="card-body">
-                            <h6 class="card-title">${leader.first_name} ${leader.last_name}</h6>
-                            <p class="card-text"><strong>Title:</strong> ${leader.title || 'N/A'}</p>
-                            <p class="card-text"><strong>Email:</strong> ${leader.email || 'N/A'}</p>
-                        </div>
-                    `;
-                    leadersList.appendChild(leaderCard);
-                });
-            } else {
-                leadersList.innerHTML = '<p>No engineering leaders found</p>';
+            if (leadersList) {
+                leadersList.innerHTML = '';
+                
+                if (engineering.engineering_leaders && engineering.engineering_leaders.length > 0) {
+                    engineering.engineering_leaders.forEach(leader => {
+                        const leaderCard = document.createElement('div');
+                        leaderCard.className = 'card mb-2';
+                        leaderCard.innerHTML = `
+                            <div class="card-body">
+                                <h6 class="card-title">${leader.first_name || ''} ${leader.last_name || ''}</h6>
+                                <p class="card-text"><strong>Title:</strong> ${leader.title || 'N/A'}</p>
+                                <p class="card-text"><strong>Email:</strong> ${leader.email || 'N/A'}</p>
+                            </div>
+                        `;
+                        leadersList.appendChild(leaderCard);
+                    });
+                } else {
+                    leadersList.innerHTML = '<p>No engineering leaders found</p>';
+                }
             }
             
             // Update personalized messages
             const messagesList = document.getElementById('messagesList');
-            messagesList.innerHTML = '';
-            
-            if (data.personalized_messages && data.personalized_messages.length > 0) {
-                data.personalized_messages.forEach(item => {
-                    const messageCard = document.createElement('div');
-                    messageCard.className = 'card mb-3 message-card';
-                    messageCard.innerHTML = `
-                        <div class="card-body">
-                            <h6 class="card-title">To: ${item.leader.first_name} ${item.leader.last_name} (${item.leader.title || 'Engineering Leader'})</h6>
-                            <p class="card-text">${item.message}</p>
-                        </div>
-                    `;
-                    messagesList.appendChild(messageCard);
-                });
-            } else {
-                messagesList.innerHTML = '<p>No personalized messages available</p>';
+            if (messagesList) {
+                messagesList.innerHTML = '';
+                
+                if (data.personalized_messages && data.personalized_messages.length > 0) {
+                    data.personalized_messages.forEach(item => {
+                        const leader = item.leader || {};
+                        const messageCard = document.createElement('div');
+                        messageCard.className = 'card mb-3 message-card';
+                        messageCard.innerHTML = `
+                            <div class="card-body">
+                                <h6 class="card-title">To: ${leader.first_name || ''} ${leader.last_name || ''} (${leader.title || 'Engineering Leader'})</h6>
+                                <p class="card-text">${item.message || ''}</p>
+                            </div>
+                        `;
+                        messagesList.appendChild(messageCard);
+                    });
+                } else {
+                    messagesList.innerHTML = '<p>No personalized messages available</p>';
+                }
             }
         }
     </script>

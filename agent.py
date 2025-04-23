@@ -7,20 +7,11 @@ import os
 # Load API keys
 load_dotenv()
 
-# Import tool
-from tools.search_tool import serpapi_search
-
 # Set up LLM
 llm = ChatOpenAI(model="gpt-4", temperature=0)
 
 # Define tools
-tools = [
-    Tool(
-        name="Google Search",
-        func=serpapi_search,
-        description="Useful for answering questions about companies by searching the web."
-    )
-]
+tools = []
 
 # Initialize agent
 agent = initialize_agent(

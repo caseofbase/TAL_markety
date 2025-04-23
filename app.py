@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, send_file
 from tools.pdl_tool import PDLTool
+from tools.employee_tool import EmployeeSearchTool
 from typing import Dict, Optional, List
 from dotenv import load_dotenv
 import os
@@ -37,7 +38,10 @@ try:
     load_dotenv()
 
     # Initialize tools
-    pdl_tool = PDLTool()
+    pdl_tool = PDLTool(
+        api_key=os.getenv('PDL_API_KEY')
+    )
+    employee_tool = EmployeeSearchTool()
 
     # Add after app initialization
     TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
@@ -137,10 +141,13 @@ def analyze_company():
         if not company_name and not company_domain:
             return jsonify({"error": "Either company_name or company_domain is required"}), 400
 
+        logger.info(f"Analyzing company - Name: {company_name}, Domain: {company_domain}")
+
         # Get company data from PDL
         company_data = None
         if company_name:
             company_data = pdl_tool.get_company_details(company_name)
+            logger.info(f"Got company details for {company_name}: {json.dumps(company_data)}")
             
             # Check if we got a valid response from PDL
             if not company_data or not company_data.get('name'):
@@ -148,52 +155,88 @@ def analyze_company():
                 
             # Extract domain from website if available
             if company_data.get('website'):
-                company_domain = company_data.get('website', '').replace('https://', '').replace('http://', '').split('/')[0]
+                company_domain = company_data.get('website')
         
         # Only proceed with engineering team search if we have a valid company domain
         if company_domain:
             try:
-                # Get engineering team data from PDL
-                eng_data = pdl_tool.get_engineering_team(company_domain)
+                logger.info(f"Fetching engineering team info for domain: {company_domain}")
+                # Get engineering team info including leaders
+                team_data = pdl_tool.get_engineering_team_info(company_domain)
+                
+                if team_data.get('error'):
+                    logger.warning(f"Error in team data: {team_data['error']}")
+                    return jsonify({
+                        "company": company_data,
+                        "engineering_leaders": [],
+                        "engineering_percentage": 0,
+                        "engineering_count": 0,
+                        "total_employees": company_data.get('total_employees', 0) if company_data else 0,
+                        "error": team_data['error'],
+                        "personalized_messages": []
+                    })
                 
                 # Generate personalized messages for engineering leaders
                 messages = []
-                for leader in eng_data.get('engineering_leaders', []):
-                    message = pdl_tool.generate_personalized_message(
-                        leader, 
-                        eng_data.get('engineering_percentage', 0)
-                    )
-                    messages.append({
-                        "leader": leader,
-                        "message": message
-                    })
+                for leader in team_data.get('engineering_leaders', []):
+                    try:
+                        message = pdl_tool.generate_personalized_message(
+                            leader, 
+                            team_data.get('company_info', {}),
+                            team_data.get('engineering_percentage', 0)
+                        )
+                        messages.append({
+                            "leader": leader,
+                            "message": message
+                        })
+                    except Exception as msg_error:
+                        logger.error(f"Error generating message for leader {leader.get('name')}: {str(msg_error)}")
+                        messages.append({
+                            "leader": leader,
+                            "message": "Error generating message"
+                        })
                 
                 # Combine the data
                 result = {
-                    "company": company_data,
-                    "engineering": eng_data,
+                    "company": company_data or team_data.get('company_info', {}),
+                    "engineering_leaders": team_data.get('engineering_leaders', []),
+                    "engineering_percentage": team_data.get('engineering_percentage', 0),
+                    "engineering_count": team_data.get('engineering_count', 0),
+                    "total_employees": team_data.get('total_employees', 0),
                     "personalized_messages": messages
                 }
                 
+                logger.info(f"Successfully analyzed company {company_name or company_domain}")
                 return jsonify(result)
+                
             except Exception as pdl_error:
-                logger.error(f"PDL API error: {str(pdl_error)}")
+                logger.error(f"PDL API error for {company_domain}: {str(pdl_error)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 # Return just the PDL data if engineering team search fails
                 return jsonify({
                     "company": company_data,
-                    "engineering": {"error": "Could not retrieve engineering data"},
+                    "engineering_leaders": [],
+                    "engineering_percentage": 0,
+                    "engineering_count": 0,
+                    "total_employees": company_data.get('total_employees', 0) if company_data else 0,
+                    "error": f"Could not retrieve engineering team data: {str(pdl_error)}",
                     "personalized_messages": []
                 })
         else:
             # Return just the PDL data if we couldn't extract a domain
             return jsonify({
                 "company": company_data,
-                "engineering": {"error": "Could not determine company domain"},
+                "engineering_leaders": [],
+                "engineering_percentage": 0,
+                "engineering_count": 0,
+                "total_employees": company_data.get('total_employees', 0) if company_data else 0,
+                "error": "Could not determine company domain",
                 "personalized_messages": []
             })
 
     except Exception as e:
         logger.error(f"Error analyzing company: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/export_companies', methods=['POST'])
@@ -341,6 +384,25 @@ def export_status():
 def export_page():
     """Serve the export page"""
     return render_template('export.html')
+
+@app.route('/get_engineering_team', methods=['POST'])
+def get_engineering_team():
+    """Get engineering team information for a company"""
+    try:
+        data = request.json
+        company_name = data.get('company_name')
+        
+        if not company_name:
+            return jsonify({"error": "company_name is required"}), 400
+            
+        # Get engineering team data
+        team_data = employee_tool.search_employees(company_name)
+        
+        return jsonify(team_data)
+        
+    except Exception as e:
+        logger.error(f"Error getting engineering team: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     try:
