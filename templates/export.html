@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Company Export Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .status-box {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #statusMessage {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .progress {
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        .download-status {
+            margin-top: 10px;
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        #downloadLink {
+            display: none;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #4CAF50;
+        }
+        #downloadLink:hover {
+            background-color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Company Export Tool</h1>
+    
+    <div class="status-box">
+        <h3>Current Status</h3>
+        <div id="statusMessage">Not started</div>
+        <div class="progress" id="progress"></div>
+        <div class="download-status" id="downloadStatus"></div>
+        <a id="downloadLink" href="#" target="_blank">Click here to download if it doesn't start automatically</a>
+    </div>
+
+    <button id="startExport" class="button">Start New Export</button>
+    <button id="resumeExport" class="button" disabled>Resume Export</button>
+    <button id="checkStatus" class="button">Check Status</button>
+
+    <script>
+        let lastSuccessfulPage = 0;
+        let downloadUrl = null;
+
+        async function startExport(startPage = 1) {
+            try {
+                document.getElementById('startExport').disabled = true;
+                document.getElementById('resumeExport').disabled = true;
+                document.getElementById('downloadStatus').textContent = '';
+                document.getElementById('downloadLink').style.display = 'none';
+                
+                const response = await fetch('/export_companies', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ start_page: startPage })
+                });
+
+                if (response.ok) {
+                    // Handle file download
+                    const blob = await response.blob();
+                    const filename = response.headers.get('content-disposition').split('filename=')[1].replace(/['"]/g, '');
+                    downloadUrl = window.URL.createObjectURL(blob);
+                    
+                    // Create download link
+                    const a = document.createElement('a');
+                    a.href = downloadUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    
+                    // Try automatic download
+                    a.click();
+                    
+                    // Show download status and backup link
+                    document.getElementById('downloadStatus').textContent = `Download started: ${filename}`;
+                    const downloadLink = document.getElementById('downloadLink');
+                    downloadLink.href = downloadUrl;
+                    downloadLink.download = filename;
+                    downloadLink.style.display = 'inline-block';
+                    
+                    // Clean up after 1 minute
+                    setTimeout(() => {
+                        if (downloadUrl) {
+                            window.URL.revokeObjectURL(downloadUrl);
+                            downloadUrl = null;
+                        }
+                    }, 60000);
+                } else {
+                    const error = await response.json();
+                    document.getElementById('statusMessage').textContent = `Error: ${error.error}`;
+                }
+            } catch (error) {
+                document.getElementById('statusMessage').textContent = `Error: ${error.message}`;
+            } finally {
+                document.getElementById('startExport').disabled = false;
+                checkStatus(); // Update status after export
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/export_status');
+                const status = await response.json();
+                
+                document.getElementById('statusMessage').textContent = status.status;
+                document.getElementById('progress').textContent = 
+                    `Companies: ${status.total_companies} | Current Page: ${status.current_page}`;
+                
+                // Enable/disable resume button based on status
+                document.getElementById('resumeExport').disabled = !status.can_resume;
+                
+                if (status.can_resume) {
+                    lastSuccessfulPage = status.last_successful_page;
+                }
+                
+                // If export is in progress, check again in 2 seconds
+                if (status.status.includes('Processing')) {
+                    setTimeout(checkStatus, 2000);
+                }
+            } catch (error) {
+                document.getElementById('statusMessage').textContent = `Error checking status: ${error.message}`;
+            }
+        }
+
+        // Event Listeners
+        document.getElementById('startExport').addEventListener('click', () => startExport(1));
+        document.getElementById('resumeExport').addEventListener('click', () => startExport(lastSuccessfulPage + 1));
+        document.getElementById('checkStatus').addEventListener('click', checkStatus);
+
+        // Check status on page load
+        checkStatus();
+    </script>
+</body>
+</html> 
